@@ -1,16 +1,15 @@
 extends Node2D
 
 # =========================
-# MAPA
-# =========================
-@onready var ground: TileMapLayer = $Map/Ground
-@onready var overlay: TileMapLayer = $MovimentOverlay/Overlay
-
-# =========================
 # UNIDADES
 # =========================
 @onready var units: Node2D = $Units
 var selected_unit: PlayerUnit = null
+
+@onready var camera: Camera2D = $Camera2D
+@onready var spawn_points: Node2D = $SpawnPoints
+@export var player_unit_scene: PackedScene
+@onready var ground: TileMapLayer = $Map/Ground
 
 # =========================
 # UI
@@ -20,8 +19,9 @@ var selected_unit: PlayerUnit = null
 # =========================
 # ESTADO
 # =========================
-enum UnitMode { NONE, MOVE }
+enum UnitMode { NONE, MOVE, ATTACK }
 var unit_mode: UnitMode = UnitMode.NONE
+
 
 var turn_index: int = 0
 var turn_order: Array[PlayerUnit] = []
@@ -30,34 +30,41 @@ var turn_order: Array[PlayerUnit] = []
 # READY
 # =========================
 func _ready() -> void:
-	# Monta ordem de turnos
+	camera.make_current()
+
+	# 1️⃣ Monta ordem de turnos
 	for node in units.get_children():
 		var unit := node as PlayerUnit
 		if unit:
 			turn_order.append(unit)
 			unit.unit_right_clicked.connect(_on_unit_right_clicked)
 
-	context_menu.id_pressed.connect(_on_menu_option_selected)
-	print(overlay.tile_set.get_source_count())
-	print(overlay.tile_set.get_source_id(0))
+	# 2️⃣ Aplica spawn points
+	var spawn_list := spawn_points.get_children()
 
-	# Começa o jogo
+	for i in range(min(spawn_list.size(), turn_order.size())):
+		var unit := turn_order[i]
+		unit.global_position = snap_to_grid(spawn_list[i].global_position)
+
+	context_menu.id_pressed.connect(_on_menu_option_selected)
+
+	# 3️⃣ Inicia turno
 	if turn_order.size() > 0:
 		start_turn()
+
+
+
 
 # =========================
 # TURNOS
 # =========================
 func start_turn() -> void:
 	unit_mode = UnitMode.NONE
-	overlay.clear()
-
 	selected_unit = turn_order[turn_index]
 	selected_unit.start_turn()
 	select_unit(selected_unit)
 
 func end_turn() -> void:
-	overlay.clear()
 	unit_mode = UnitMode.NONE
 	selected_unit.set_selected(false)
 
@@ -74,6 +81,13 @@ func _on_unit_right_clicked(unit: PlayerUnit, mouse_pos: Vector2) -> void:
 	context_menu.position = mouse_pos
 	context_menu.popup()
 
+func enter_attack_mode() -> void:
+	if not selected_unit.can_act():
+		return
+
+	unit_mode = UnitMode.ATTACK
+
+
 # =========================
 # MENU
 # =========================
@@ -81,78 +95,53 @@ func _on_menu_option_selected(id: int) -> void:
 	match id:
 		0:
 			enter_move_mode()
-		1, 2:
+		1:
+			enter_attack_mode()
+		2:
 			selected_unit.finish_action()
 			end_turn()
 		3:
 			end_turn()
+
+
 
 func enter_move_mode() -> void:
 	if not selected_unit.can_move():
 		return
 
 	unit_mode = UnitMode.MOVE
-	show_movement_range(selected_unit)
 
 # =========================
 # INPUT GLOBAL
 # =========================
 func _unhandled_input(event: InputEvent) -> void:
-	if unit_mode != UnitMode.MOVE:
-		return
-
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			try_move_selected(event.global_position)
+
+			if unit_mode == UnitMode.MOVE:
+				move_selected_to_mouse()
+
+			elif unit_mode == UnitMode.ATTACK:
+				try_attack_at_mouse()
+
 
 # =========================
-# MOVIMENTO
+# MOVIMENTO (GODOT 4 CORRETO)
 # =========================
-func try_move_selected(mouse_pos: Vector2) -> void:
+func move_selected_to_mouse() -> void:
 	if selected_unit == null:
 		return
 
-	var target_tile := mouse_to_tile(mouse_pos)
+	var tile := world_to_tile(get_global_mouse_position())
 
-	# Agora a verificação correta
-	if overlay.get_cell_source_id(target_tile) == -1:
+	# Validação básica
+	if not is_tile_walkable(tile):
 		return
 
-	selected_unit.global_position = tile_to_world(target_tile)
-
-	overlay.clear()
+	selected_unit.global_position = tile_to_world(tile)
 	selected_unit.finish_move()
 	unit_mode = UnitMode.NONE
 
-
-# =========================
-# RANGE
-# =========================
-func show_movement_range(unit: PlayerUnit) -> void:
-	overlay.clear()
-
-	var unit_tile := ground.local_to_map(unit.global_position)
-
-	overlay.set_cell(unit_tile, 1, Vector2i(0, 0))
-
-
-
-func is_tile_walkable(tile: Vector2i) -> bool:
-	return ground.get_cell_source_id(tile) != -1
-
-# =========================
-# CONVERSÕES
-# =========================
-func mouse_to_tile(mouse_pos: Vector2) -> Vector2i:
-	var local_pos := ground.to_local(mouse_pos)
-	return ground.local_to_map(local_pos)
-
-
-func world_to_tile(pos: Vector2) -> Vector2i:
-	return ground.local_to_map(pos)
-
-func tile_to_world(tile: Vector2i) -> Vector2:
-	return ground.map_to_local(tile)
 
 # =========================
 # VISUAL
@@ -163,3 +152,37 @@ func select_unit(unit: PlayerUnit) -> void:
 
 	selected_unit = unit
 	selected_unit.set_selected(true)
+	
+func try_attack_at_mouse() -> void:
+	var mouse_pos := get_global_mouse_position()
+	var space := get_world_2d().direct_space_state
+
+	var query := PhysicsPointQueryParameters2D.new()
+	query.position = mouse_pos
+	query.collide_with_areas = true
+
+	var result: Array = space.intersect_point(query)
+
+	for hit: Dictionary in result:
+		var collider: Object = hit["collider"]
+
+		if collider is Area2D:
+			var unit: Node = collider.get_parent()
+
+			if unit is PlayerUnit and unit != selected_unit:
+				selected_unit.attack(unit)
+				unit_mode = UnitMode.NONE
+			return
+			
+func world_to_tile(world_pos: Vector2) -> Vector2i:
+	return ground.local_to_map(ground.to_local(world_pos))
+
+func tile_to_world(tile: Vector2i) -> Vector2:
+	return ground.map_to_local(tile)
+	
+func snap_to_grid(world_pos: Vector2) -> Vector2:
+	var tile := world_to_tile(world_pos)
+	return tile_to_world(tile)
+
+func is_tile_walkable(tile: Vector2i) -> bool:
+	return ground.get_cell_source_id(tile) != -1
