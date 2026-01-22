@@ -1,0 +1,45 @@
+[gd_scene load_steps=6 format=3 uid="uid://b6yn6o0hk7bwl"]
+
+[ext_resource type="Script" uid="uid://7w8p5ix0fg0m" path="res://player_unit_1.gd" id="1_cek23"]
+[ext_resource type="Texture2D" uid="uid://cvb8lbn016t3e" path="res://Erwyn.jpg" id="2_1mcqa"]
+[ext_resource type="Script" uid="uid://dug1skqblp81h" path="res://health_bar.gd" id="3_1mcqa"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_rj586"]
+size = Vector2(32, 32)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_0hol4"]
+size = Vector2(32, 32)
+
+[node name="PlayerUnit1" type="CharacterBody2D"]
+z_index = 2
+script = ExtResource("1_cek23")
+attack_range = 9
+move_points = 10
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+z_index = 2
+scale = Vector2(0.0940233, 0.0740092)
+texture = ExtResource("2_1mcqa")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+z_index = 3
+shape = SubResource("RectangleShape2D_rj586")
+
+[node name="Area2D" type="Area2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area2D"]
+shape = SubResource("RectangleShape2D_0hol4")
+
+[node name="HealthBar" type="Node2D" parent="."]
+z_index = 2
+position = Vector2(-16, -16)
+script = ExtResource("3_1mcqa")
+
+[node name="Bar" type="ColorRect" parent="HealthBar"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_right = 32.0
+offset_bottom = 5.0
+grow_horizontal = 2
+color = Color(0, 1, 0, 1)

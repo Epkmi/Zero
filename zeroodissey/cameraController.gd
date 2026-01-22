@@ -24,20 +24,9 @@ func _ready():
 # =========================
 # INPUT
 # =========================
-func _unhandled_input(event: InputEvent) -> void:
+func pan_to(world_pos: Vector2) -> void:
+	target_position = world_pos
 
-	# ---------- ZOOM ----------
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_set_zoom(-zoom_step)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_set_zoom(zoom_step)
-
-	# ---------- MOVE CAMERA ----------
-	if event is InputEventMouseButton:
-		if event.button_index == mouse_pan_button and event.pressed:
-			var world_pos := get_global_mouse_position()
-			target_position = world_pos
 
 # =========================
 # PROCESS (MOVIMENTO SUAVE)
